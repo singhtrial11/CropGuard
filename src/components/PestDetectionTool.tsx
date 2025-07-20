@@ -2,28 +2,29 @@ import React, { useState, useRef, useCallback } from 'react';
 import { Upload, Camera, Search, AlertTriangle, CheckCircle, Clock, History, BarChart3, Info, Loader, X, Play, Square } from 'lucide-react';
 
 const PestDetectionTool = () => {
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState(null);
+  const [selectedImage, setSelectedImage] = useState<File | null>(null);
+  const [imagePreview, setImagePreview] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const [detectionResult, setDetectionResult] = useState(null);
-  const [error, setError] = useState(null);
+  const [detectionResult, setDetectionResult] = useState<any>(null);
+  const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('upload');
-  const [history, setHistory] = useState([]);
-  const [stats, setStats] = useState(null);
+  const [history, setHistory] = useState<any[]>([]);
+  const [stats, setStats] = useState<any>(null);
   const [cameraMode, setCameraMode] = useState(false);
   const [farmerId] = useState('farmer_' + Math.random().toString(36).substr(2, 9));
-  const [stream, setStream] = useState(null);
+  const [stream, setStream] = useState<MediaStream | null>(null);
   
-  const fileInputRef = useRef(null);
-  const videoRef = useRef(null);
-  const canvasRef = useRef(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const API_BASE_URL = 'http://localhost:5000/api';
 
   // Handle file selection
-  const handleFileSelect = (event) => {
-    const file = event.target.files[0];
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
     if (file) {
+      console.log('File selected:', file.name);
       setSelectedImage(file);
       setDetectionResult(null);
       setError(null);
@@ -31,36 +32,66 @@ const PestDetectionTool = () => {
       // Create preview
       const reader = new FileReader();
       reader.onload = (e) => {
-        setImagePreview(e.target.result);
+        const result = e.target?.result as string;
+        setImagePreview(result);
+        console.log('Image preview created');
       };
       reader.readAsDataURL(file);
     }
-  };
+  }, []);
+
+  // Handle drag and drop
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    const files = e.dataTransfer.files;
+    if (files.length > 0) {
+      const file = files[0];
+      console.log('File dropped:', file.name);
+      setSelectedImage(file);
+      setDetectionResult(null);
+      setError(null);
+      
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const result = e.target?.result as string;
+        setImagePreview(result);
+      };
+      reader.readAsDataURL(file);
+    }
+  }, []);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+  }, []);
 
   // Start camera
-  const startCamera = async () => {
+  const startCamera = useCallback(async () => {
     try {
+      console.log('Starting camera...');
       setError(null);
-      const stream = await navigator.mediaDevices.getUserMedia({ 
+      const mediaStream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           width: { ideal: 1280 },
           height: { ideal: 720 },
           facingMode: 'environment' // Use back camera on mobile
         } 
       });
+      
       if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setStream(stream);
+        videoRef.current.srcObject = mediaStream;
+        setStream(mediaStream);
         setCameraMode(true);
+        console.log('Camera started successfully');
       }
     } catch (err) {
-      setError('Camera access denied or not available. Please check permissions.');
       console.error('Camera error:', err);
+      setError('Camera access denied or not available. Please check permissions.');
     }
-  };
+  }, []);
 
   // Stop camera
-  const stopCamera = () => {
+  const stopCamera = useCallback(() => {
+    console.log('Stopping camera...');
     if (stream) {
       stream.getTracks().forEach(track => track.stop());
       setStream(null);
@@ -69,36 +100,43 @@ const PestDetectionTool = () => {
     if (videoRef.current) {
       videoRef.current.srcObject = null;
     }
-  };
+  }, [stream]);
 
   // Capture photo from camera
-  const capturePhoto = () => {
+  const capturePhoto = useCallback(() => {
+    console.log('Capturing photo...');
     const video = videoRef.current;
     const canvas = canvasRef.current;
     
     if (video && canvas) {
       const ctx = canvas.getContext('2d');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      ctx.drawImage(video, 0, 0);
-      
-      canvas.toBlob((blob) => {
-        const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
-        setSelectedImage(file);
-        setImagePreview(canvas.toDataURL());
-        stopCamera();
-        setActiveTab('upload'); // Switch back to upload tab to show captured image
-      }, 'image/jpeg', 0.8);
+      if (ctx) {
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        ctx.drawImage(video, 0, 0);
+        
+        canvas.toBlob((blob) => {
+          if (blob) {
+            const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+            setSelectedImage(file);
+            setImagePreview(canvas.toDataURL());
+            stopCamera();
+            setActiveTab('upload'); // Switch back to upload tab to show captured image
+            console.log('Photo captured successfully');
+          }
+        }, 'image/jpeg', 0.8);
+      }
     }
-  };
+  }, [stopCamera]);
 
   // Submit image for detection
-  const handleDetection = async () => {
+  const handleDetection = useCallback(async () => {
     if (!selectedImage) {
       setError('Please select an image first');
       return;
     }
 
+    console.log('Starting detection...');
     setIsLoading(true);
     setError(null);
     setDetectionResult(null);
@@ -119,50 +157,57 @@ const PestDetectionTool = () => {
 
       if (response.ok) {
         setDetectionResult(data);
+        console.log('Detection successful:', data);
         fetchHistory(); // Refresh history
       } else {
         setError(data.error || 'Detection failed. Please try again.');
+        console.error('Detection failed:', data);
       }
     } catch (err) {
-      setError('Unable to connect to detection service. Please ensure the backend is running.');
       console.error('Detection error:', err);
+      setError('Unable to connect to detection service. Please ensure the backend is running.');
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [selectedImage, farmerId]);
 
   // Fetch detection history
-  const fetchHistory = async () => {
+  const fetchHistory = useCallback(async () => {
     try {
+      console.log('Fetching history...');
       const response = await fetch(`${API_BASE_URL}/history?farmer_id=${farmerId}&limit=10`);
       const data = await response.json();
       setHistory(data.history || []);
+      console.log('History fetched:', data.history?.length || 0, 'items');
     } catch (err) {
       console.error('Failed to fetch history:', err);
       setHistory([]);
     }
-  };
+  }, [farmerId]);
 
   // Fetch statistics
-  const fetchStats = async () => {
+  const fetchStats = useCallback(async () => {
     try {
+      console.log('Fetching stats...');
       const response = await fetch(`${API_BASE_URL}/stats?farmer_id=${farmerId}`);
       const data = await response.json();
       setStats(data);
+      console.log('Stats fetched:', data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
       setStats(null);
     }
-  };
+  }, [farmerId]);
 
-  // Load data when component mounts or tab changes
+  // Load data when tab changes
   React.useEffect(() => {
+    console.log('Tab changed to:', activeTab);
     if (activeTab === 'history') {
       fetchHistory();
     } else if (activeTab === 'stats') {
       fetchStats();
     }
-  }, [activeTab]);
+  }, [activeTab, fetchHistory, fetchStats]);
 
   // Cleanup camera on unmount
   React.useEffect(() => {
@@ -173,7 +218,7 @@ const PestDetectionTool = () => {
     };
   }, [stream]);
 
-  const getSeverityColor = (severity) => {
+  const getSeverityColor = (severity: string) => {
     switch (severity?.toLowerCase()) {
       case 'high': return 'text-red-600 bg-red-100 border-red-200';
       case 'medium': return 'text-yellow-600 bg-yellow-100 border-yellow-200';
@@ -183,13 +228,14 @@ const PestDetectionTool = () => {
     }
   };
 
-  const getConfidenceColor = (confidence) => {
+  const getConfidenceColor = (confidence: number) => {
     if (confidence >= 90) return 'text-green-600';
     if (confidence >= 70) return 'text-yellow-600';
     return 'text-red-600';
   };
 
-  const clearImage = () => {
+  const clearImage = useCallback(() => {
+    console.log('Clearing image...');
     setSelectedImage(null);
     setImagePreview(null);
     setDetectionResult(null);
@@ -197,7 +243,17 @@ const PestDetectionTool = () => {
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
-  };
+  }, []);
+
+  const handleTabClick = useCallback((tab: string) => {
+    console.log('Switching to tab:', tab);
+    setActiveTab(tab);
+  }, []);
+
+  const handleUploadClick = useCallback(() => {
+    console.log('Upload button clicked');
+    fileInputRef.current?.click();
+  }, []);
 
   return (
     <section id="detection" className="py-20 bg-gradient-to-br from-gray-50 to-green-50">
@@ -219,7 +275,7 @@ const PestDetectionTool = () => {
             <div className="border-b border-gray-200">
               <nav className="flex">
                 <button
-                  onClick={() => setActiveTab('upload')}
+                  onClick={() => handleTabClick('upload')}
                   className={`flex-1 py-4 px-6 text-center font-medium transition-colors ${
                     activeTab === 'upload'
                       ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
@@ -230,7 +286,7 @@ const PestDetectionTool = () => {
                   Upload Image
                 </button>
                 <button
-                  onClick={() => setActiveTab('camera')}
+                  onClick={() => handleTabClick('camera')}
                   className={`flex-1 py-4 px-6 text-center font-medium transition-colors ${
                     activeTab === 'camera'
                       ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
@@ -241,7 +297,7 @@ const PestDetectionTool = () => {
                   Take Photo
                 </button>
                 <button
-                  onClick={() => setActiveTab('history')}
+                  onClick={() => handleTabClick('history')}
                   className={`flex-1 py-4 px-6 text-center font-medium transition-colors ${
                     activeTab === 'history'
                       ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
@@ -252,7 +308,7 @@ const PestDetectionTool = () => {
                   History
                 </button>
                 <button
-                  onClick={() => setActiveTab('stats')}
+                  onClick={() => handleTabClick('stats')}
                   className={`flex-1 py-4 px-6 text-center font-medium transition-colors ${
                     activeTab === 'stats'
                       ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
@@ -273,16 +329,9 @@ const PestDetectionTool = () => {
                   {!imagePreview ? (
                     <div 
                       className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-green-400 transition-colors cursor-pointer"
-                      onClick={() => fileInputRef.current?.click()}
-                      onDragOver={(e) => e.preventDefault()}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        const files = e.dataTransfer.files;
-                        if (files.length > 0) {
-                          const event = { target: { files } };
-                          handleFileSelect(event);
-                        }
-                      }}
+                      onClick={handleUploadClick}
+                      onDragOver={handleDragOver}
+                      onDrop={handleDrop}
                     >
                       <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                       <h3 className="text-xl font-semibold text-gray-900 mb-2">
@@ -293,6 +342,7 @@ const PestDetectionTool = () => {
                       </p>
                       <button 
                         type="button"
+                        onClick={handleUploadClick}
                         className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
                       >
                         Choose File
@@ -328,7 +378,7 @@ const PestDetectionTool = () => {
                           <span>Clear</span>
                         </button>
                         <button
-                          onClick={() => fileInputRef.current?.click()}
+                          onClick={handleUploadClick}
                           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                           <Upload className="w-4 h-4" />
@@ -565,7 +615,7 @@ const PestDetectionTool = () => {
                     <div>
                       <h4 className="font-semibold text-gray-900 mb-3">Detailed Analysis:</h4>
                       <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-                        {detectionResult.all_predictions.map((pred, index) => (
+                        {detectionResult.all_predictions.map((pred: any, index: number) => (
                           <div key={index} className="bg-gray-50 border border-gray-200 p-3 rounded-lg">
                             <div className="flex justify-between items-center">
                               <span className="text-sm font-medium text-gray-700 truncate">{pred.class}</span>
