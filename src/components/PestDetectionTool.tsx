@@ -1,37 +1,173 @@
-import React, { useState } from 'react';
-import { Upload, Camera, Search, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
+import React, { useState, useRef, useCallback } from 'react';
+import { Upload, Camera, Search, AlertTriangle, CheckCircle, Clock, History, BarChart3, Info, Loader, X } from 'lucide-react';
 
 const PestDetectionTool = () => {
+  const [selectedImage, setSelectedImage] = useState(null);
+  const [imagePreview, setImagePreview] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [detectionResult, setDetectionResult] = useState(null);
+  const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('upload');
-  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [history, setHistory] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [cameraMode, setCameraMode] = useState(false);
+  const [farmerId] = useState('farmer_' + Math.random().toString(36).substr(2, 9));
+  
+  const fileInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const canvasRef = useRef(null);
 
-  const mockResults = [
-    {
-      pest: "Aphids",
-      confidence: 94,
-      severity: "High",
-      treatment: "Apply neem oil spray within 24 hours",
-      color: "red"
-    },
-    {
-      pest: "Leaf Miners", 
-      confidence: 87,
-      severity: "Medium",
-      treatment: "Monitor closely, consider beneficial insects",
-      color: "yellow"
-    },
-    {
-      pest: "Healthy Crop",
-      confidence: 96,
-      severity: "Low",
-      treatment: "Continue current care routine",
-      color: "green"
+  const API_BASE_URL = 'http://localhost:5000/api';
+
+  // Handle file selection
+  const handleFileSelect = (event) => {
+    const file = event.target.files[0];
+    if (file) {
+      setSelectedImage(file);
+      setDetectionResult(null);
+      setError(null);
+      
+      // Create preview
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setImagePreview(e.target.result);
+      };
+      reader.readAsDataURL(file);
     }
-  ];
+  };
 
-  const handleAnalyze = () => {
-    setIsAnalyzing(true);
-    setTimeout(() => setIsAnalyzing(false), 3000);
+  // Start camera
+  const startCamera = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ 
+        video: { 
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          facingMode: 'environment' // Use back camera on mobile
+        } 
+      });
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        setCameraMode(true);
+        setError(null);
+      }
+    } catch (err) {
+      setError('Camera access denied or not available. Please check permissions.');
+      console.error('Camera error:', err);
+    }
+  };
+
+  // Stop camera
+  const stopCamera = () => {
+    if (videoRef.current && videoRef.current.srcObject) {
+      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+      setCameraMode(false);
+    }
+  };
+
+  // Capture photo from camera
+  const capturePhoto = () => {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    
+    if (video && canvas) {
+      const ctx = canvas.getContext('2d');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      ctx.drawImage(video, 0, 0);
+      
+      canvas.toBlob((blob) => {
+        const file = new File([blob], 'camera_capture.jpg', { type: 'image/jpeg' });
+        setSelectedImage(file);
+        setImagePreview(canvas.toDataURL());
+        stopCamera();
+      }, 'image/jpeg', 0.8);
+    }
+  };
+
+  // Submit image for detection
+  const handleDetection = async () => {
+    if (!selectedImage) {
+      setError('Please select an image first');
+      return;
+    }
+
+    setIsLoading(true);
+    setError(null);
+
+    const formData = new FormData();
+    formData.append('file', selectedImage);
+    formData.append('farmer_id', farmerId);
+    formData.append('location', 'CropGuard Farm');
+    formData.append('crop_type', 'Mixed Crops');
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/detect`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setDetectionResult(data);
+        fetchHistory(); // Refresh history
+      } else {
+        setError(data.error || 'Detection failed. Please try again.');
+      }
+    } catch (err) {
+      setError('Unable to connect to detection service. Please ensure the backend is running.');
+      console.error('Detection error:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // Fetch detection history
+  const fetchHistory = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/history?farmer_id=${farmerId}&limit=10`);
+      const data = await response.json();
+      setHistory(data.history || []);
+    } catch (err) {
+      console.error('Failed to fetch history:', err);
+    }
+  };
+
+  // Fetch statistics
+  const fetchStats = async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/stats?farmer_id=${farmerId}`);
+      const data = await response.json();
+      setStats(data);
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+    }
+  };
+
+  // Load data when component mounts or tab changes
+  React.useEffect(() => {
+    if (activeTab === 'history') {
+      fetchHistory();
+    } else if (activeTab === 'stats') {
+      fetchStats();
+    }
+  }, [activeTab]);
+
+  const getSeverityColor = (severity) => {
+    switch (severity?.toLowerCase()) {
+      case 'high': return 'text-red-600 bg-red-100 border-red-200';
+      case 'medium': return 'text-yellow-600 bg-yellow-100 border-yellow-200';
+      case 'low': 
+      case 'none': return 'text-green-600 bg-green-100 border-green-200';
+      default: return 'text-gray-600 bg-gray-100 border-gray-200';
+    }
+  };
+
+  const getConfidenceColor = (confidence) => {
+    if (confidence >= 90) return 'text-green-600';
+    if (confidence >= 70) return 'text-yellow-600';
+    return 'text-red-600';
   };
 
   return (
@@ -39,16 +175,16 @@ const PestDetectionTool = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center space-y-4 mb-16">
           <h2 className="text-4xl font-bold text-gray-900">
-            Try Our
-            <span className="text-green-600"> Pest Detection Tool</span>
+            AI-Powered
+            <span className="text-green-600"> Pest Detection</span>
           </h2>
           <p className="text-xl text-gray-600 max-w-3xl mx-auto">
-            Upload an image of your crops and let our AI instantly identify potential pest threats
-            and provide treatment recommendations.
+            Upload an image of your crops and let our advanced AI instantly identify potential pest threats
+            and provide expert treatment recommendations.
           </p>
         </div>
 
-        <div className="max-w-4xl mx-auto">
+        <div className="max-w-6xl mx-auto">
           <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
             {/* Tab Navigation */}
             <div className="border-b border-gray-200">
@@ -75,14 +211,40 @@ const PestDetectionTool = () => {
                   <Camera className="w-5 h-5 mx-auto mb-1" />
                   Take Photo
                 </button>
+                <button
+                  onClick={() => setActiveTab('history')}
+                  className={`flex-1 py-4 px-6 text-center font-medium transition-colors ${
+                    activeTab === 'history'
+                      ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <History className="w-5 h-5 mx-auto mb-1" />
+                  History
+                </button>
+                <button
+                  onClick={() => setActiveTab('stats')}
+                  className={`flex-1 py-4 px-6 text-center font-medium transition-colors ${
+                    activeTab === 'stats'
+                      ? 'text-green-600 border-b-2 border-green-600 bg-green-50'
+                      : 'text-gray-500 hover:text-gray-700'
+                  }`}
+                >
+                  <BarChart3 className="w-5 h-5 mx-auto mb-1" />
+                  Analytics
+                </button>
               </nav>
             </div>
 
             <div className="p-8">
+              {/* Upload Tab */}
               {activeTab === 'upload' && (
                 <div className="space-y-6">
                   {/* Upload Area */}
-                  <div className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-green-400 transition-colors">
+                  <div 
+                    className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-green-400 transition-colors cursor-pointer"
+                    onClick={() => fileInputRef.current?.click()}
+                  >
                     <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
                     <h3 className="text-xl font-semibold text-gray-900 mb-2">
                       Upload Crop Image
@@ -95,79 +257,301 @@ const PestDetectionTool = () => {
                     </button>
                   </div>
 
-                  {/* ML Model Integration Placeholder */}
-                  <div className="bg-blue-50 border border-blue-200 rounded-xl p-6">
-                    <h4 className="text-lg font-semibold text-blue-900 mb-2 flex items-center">
-                      <Search className="w-5 h-5 mr-2" />
-                      ML Model Integration Space
-                    </h4>
-                    <p className="text-blue-700">
-                      This is where your machine learning model will be integrated. The model will process
-                      the uploaded images and return pest detection results with confidence scores.
-                    </p>
-                    <div className="mt-4 p-4 bg-blue-100 rounded-lg">
-                      <code className="text-sm text-blue-800">
-                        // ML Model API endpoint will be called here<br/>
-                        // Process image → Detect pests → Return results
-                      </code>
-                    </div>
-                  </div>
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept="image/*"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                  />
 
-                  <button 
-                    onClick={handleAnalyze}
-                    disabled={isAnalyzing}
-                    className="w-full bg-green-600 text-white py-4 rounded-xl hover:bg-green-700 transition-colors disabled:bg-gray-400 flex items-center justify-center space-x-2"
-                  >
-                    {isAnalyzing ? (
-                      <>
-                        <Clock className="w-5 h-5 animate-spin" />
-                        <span>Analyzing Image...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Search className="w-5 h-5" />
-                        <span>Analyze for Pests</span>
-                      </>
-                    )}
-                  </button>
+                  {/* Image Preview */}
+                  {imagePreview && (
+                    <div className="relative">
+                      <img 
+                        src={imagePreview} 
+                        alt="Selected crop" 
+                        className="max-w-full h-64 object-cover rounded-xl mx-auto border border-gray-200"
+                      />
+                      <button
+                        onClick={() => {
+                          setSelectedImage(null);
+                          setImagePreview(null);
+                          setDetectionResult(null);
+                        }}
+                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
+
+                  {selectedImage && (
+                    <button 
+                      onClick={handleDetection}
+                      disabled={isLoading}
+                      className="w-full bg-green-600 text-white py-4 rounded-xl hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
+                    >
+                      {isLoading ? (
+                        <>
+                          <Loader className="w-5 h-5 animate-spin" />
+                          <span>Analyzing Image...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Search className="w-5 h-5" />
+                          <span>Detect Pests</span>
+                        </>
+                      )}
+                    </button>
+                  )}
                 </div>
               )}
 
+              {/* Camera Tab */}
               {activeTab === 'camera' && (
                 <div className="space-y-6">
-                  <div className="bg-gray-100 rounded-2xl h-80 flex items-center justify-center">
-                    <div className="text-center text-gray-500">
-                      <Camera className="w-16 h-16 mx-auto mb-4" />
-                      <p className="text-lg">Camera interface will be integrated here</p>
-                      <p className="text-sm">Real-time pest detection from device camera</p>
+                  {!cameraMode ? (
+                    <div className="text-center space-y-6">
+                      <div className="bg-gray-100 rounded-2xl h-80 flex items-center justify-center">
+                        <div className="text-center text-gray-500">
+                          <Camera className="w-16 h-16 mx-auto mb-4" />
+                          <p className="text-lg">Ready to capture crop images</p>
+                          <p className="text-sm">Click below to start your camera</p>
+                        </div>
+                      </div>
+                      
+                      <button 
+                        onClick={startCamera}
+                        className="bg-green-600 text-white px-8 py-4 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 mx-auto"
+                      >
+                        <Camera className="w-5 h-5" />
+                        <span>Start Camera</span>
+                      </button>
                     </div>
-                  </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <div className="relative">
+                        <video
+                          ref={videoRef}
+                          autoPlay
+                          playsInline
+                          className="w-full max-w-2xl mx-auto rounded-2xl"
+                        />
+                        <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
+                          <button
+                            onClick={capturePhoto}
+                            className="bg-green-600 text-white px-6 py-3 rounded-full hover:bg-green-700 transition-colors flex items-center space-x-2"
+                          >
+                            <Camera className="w-5 h-5" />
+                            <span>Capture</span>
+                          </button>
+                          <button
+                            onClick={stopCamera}
+                            className="bg-red-600 text-white px-6 py-3 rounded-full hover:bg-red-700 transition-colors"
+                          >
+                            <X className="w-5 h-5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                   
-                  <button className="w-full bg-green-600 text-white py-4 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center space-x-2">
-                    <Camera className="w-5 h-5" />
-                    <span>Capture & Analyze</span>
-                  </button>
+                  <canvas ref={canvasRef} className="hidden" />
+                  
+                  {imagePreview && !cameraMode && (
+                    <div className="space-y-4">
+                      <img 
+                        src={imagePreview} 
+                        alt="Captured crop" 
+                        className="max-w-full h-64 object-cover rounded-xl mx-auto border border-gray-200"
+                      />
+                      <button 
+                        onClick={handleDetection}
+                        disabled={isLoading}
+                        className="w-full bg-green-600 text-white py-4 rounded-xl hover:bg-green-700 transition-colors disabled:bg-gray-400 flex items-center justify-center space-x-2"
+                      >
+                        {isLoading ? (
+                          <>
+                            <Loader className="w-5 h-5 animate-spin" />
+                            <span>Analyzing...</span>
+                          </>
+                        ) : (
+                          <>
+                            <Search className="w-5 h-5" />
+                            <span>Analyze Capture</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* Mock Results */}
-              {!isAnalyzing && (
-                <div className="mt-8 space-y-4">
-                  <h4 className="text-lg font-semibold text-gray-900">Detection Results</h4>
-                  {mockResults.map((result, index) => (
-                    <div key={index} className="border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
-                      <div className="flex items-center justify-between mb-2">
-                        <div className="flex items-center space-x-2">
-                          {result.color === 'red' && <AlertTriangle className="w-5 h-5 text-red-500" />}
-                          {result.color === 'yellow' && <AlertTriangle className="w-5 h-5 text-yellow-500" />}
-                          {result.color === 'green' && <CheckCircle className="w-5 h-5 text-green-500" />}
-                          <span className="font-medium text-gray-900">{result.pest}</span>
+              {/* History Tab */}
+              {activeTab === 'history' && (
+                <div className="space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900">Detection History</h3>
+                  {history.length > 0 ? (
+                    <div className="space-y-4">
+                      {history.map((item, index) => (
+                        <div key={index} className="bg-gray-50 border border-gray-200 rounded-xl p-4 hover:shadow-md transition-shadow">
+                          <div className="flex justify-between items-start">
+                            <div className="space-y-1">
+                              <h4 className="font-semibold text-gray-900">{item.pest_class}</h4>
+                              <p className="text-sm text-gray-600">
+                                {new Date(item.timestamp).toLocaleDateString()} at {new Date(item.timestamp).toLocaleTimeString()}
+                              </p>
+                              <p className="text-sm text-gray-600">
+                                Location: {item.location} | Crop: {item.crop_type}
+                              </p>
+                            </div>
+                            <span className="bg-blue-100 text-blue-800 px-3 py-1 rounded-full text-sm font-medium">
+                              {(item.confidence * 100).toFixed(1)}%
+                            </span>
+                          </div>
                         </div>
-                        <span className="text-sm text-gray-500">{result.confidence}% confidence</span>
-                      </div>
-                      <p className="text-sm text-gray-600">{result.treatment}</p>
+                      ))}
                     </div>
-                  ))}
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      <History className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <p>No detection history found.</p>
+                      <p className="text-sm">Start detecting pests to see your history here.</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Statistics Tab */}
+              {activeTab === 'stats' && (
+                <div className="space-y-6">
+                  <h3 className="text-xl font-semibold text-gray-900">Detection Analytics</h3>
+                  {stats ? (
+                    <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
+                      <div className="bg-blue-50 border border-blue-200 p-6 rounded-xl">
+                        <h4 className="font-semibold text-blue-600 mb-2">Total Detections</h4>
+                        <p className="text-3xl font-bold text-blue-800">{stats.total_detections}</p>
+                      </div>
+                      
+                      <div className="bg-green-50 border border-green-200 p-6 rounded-xl">
+                        <h4 className="font-semibold text-green-600 mb-2">Avg Confidence</h4>
+                        <p className="text-3xl font-bold text-green-800">{stats.average_confidence}%</p>
+                      </div>
+                      
+                      <div className="bg-yellow-50 border border-yellow-200 p-6 rounded-xl">
+                        <h4 className="font-semibold text-yellow-600 mb-2">Most Common</h4>
+                        <p className="text-lg font-bold text-yellow-800">{stats.most_common_pest}</p>
+                      </div>
+                      
+                      <div className="bg-purple-50 border border-purple-200 p-6 rounded-xl">
+                        <h4 className="font-semibold text-purple-600 mb-2">Pest Types</h4>
+                        <p className="text-3xl font-bold text-purple-800">
+                          {Object.keys(stats.pest_distribution || {}).length}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="text-center py-12 text-gray-500">
+                      <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-50" />
+                      <p>Loading analytics...</p>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Error Display */}
+              {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl">
+                  <div className="flex items-center">
+                    <AlertTriangle size={20} className="mr-2" />
+                    <span>{error}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Detection Results */}
+              {detectionResult && (
+                <div className="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm space-y-6">
+                  <h3 className="text-2xl font-semibold text-gray-900 flex items-center">
+                    <Info size={24} className="mr-2 text-blue-600" />
+                    Detection Results
+                  </h3>
+                  
+                  <div className="grid md:grid-cols-2 gap-8">
+                    {/* Main Results */}
+                    <div className="space-y-4">
+                      <div className="bg-gray-50 p-4 rounded-xl">
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-medium text-gray-600">Detected Pest:</span>
+                          <span className="text-xl font-bold text-gray-900">
+                            {detectionResult.pest_detected}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-medium text-gray-600">Scientific Name:</span>
+                          <span className="italic text-gray-700">{detectionResult.scientific_name}</span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center mb-3">
+                          <span className="text-sm font-medium text-gray-600">Confidence:</span>
+                          <span className={`font-bold text-lg ${getConfidenceColor(detectionResult.confidence)}`}>
+                            {detectionResult.confidence}%
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center">
+                          <span className="text-sm font-medium text-gray-600">Threat Level:</span>
+                          <span className={`px-3 py-1 rounded-full text-sm font-medium border ${getSeverityColor(detectionResult.severity)}`}>
+                            {detectionResult.severity}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Treatment & Prevention */}
+                    <div className="space-y-4">
+                      <div className="bg-red-50 border border-red-200 p-4 rounded-xl">
+                        <h4 className="font-semibold text-red-700 mb-2 flex items-center">
+                          <AlertTriangle className="w-4 h-4 mr-1" />
+                          Recommended Treatment:
+                        </h4>
+                        <p className="text-sm text-red-600">{detectionResult.treatment}</p>
+                      </div>
+                      
+                      <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl">
+                        <h4 className="font-semibold text-blue-700 mb-2 flex items-center">
+                          <CheckCircle className="w-4 h-4 mr-1" />
+                          Prevention Tips:
+                        </h4>
+                        <p className="text-sm text-blue-600">{detectionResult.prevention}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* All Predictions */}
+                  {detectionResult.all_predictions && (
+                    <div>
+                      <h4 className="font-semibold text-gray-900 mb-3">Detailed Analysis:</h4>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        {detectionResult.all_predictions.map((pred, index) => (
+                          <div key={index} className="bg-gray-50 border border-gray-200 p-3 rounded-lg">
+                            <div className="flex justify-between items-center">
+                              <span className="text-sm font-medium text-gray-700 truncate">{pred.class}</span>
+                              <span className="text-sm font-bold text-gray-900">{pred.confidence}%</span>
+                            </div>
+                            <div className="w-full bg-gray-200 rounded-full h-2 mt-2">
+                              <div 
+                                className="bg-green-600 h-2 rounded-full transition-all duration-300" 
+                                style={{ width: `${pred.confidence}%` }}
+                              ></div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
