@@ -329,7 +329,11 @@ const PestDetectionTool = () => {
                   {!imagePreview ? (
                     <div 
                       className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-green-400 transition-colors cursor-pointer"
-                      onClick={handleUploadClick}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        console.log('Upload area clicked');
+                        handleUploadClick();
+                      }}
                       onDragOver={handleDragOver}
                       onDrop={handleDrop}
                     >
@@ -342,7 +346,11 @@ const PestDetectionTool = () => {
                       </p>
                       <button 
                         type="button"
-                        onClick={handleUploadClick}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          console.log('Choose File button clicked');
+                          handleUploadClick();
+                        }}
                         className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
                       >
                         Choose File
@@ -371,14 +379,22 @@ const PestDetectionTool = () => {
                       />
                       <div className="flex justify-center mt-4 space-x-4">
                         <button
-                          onClick={clearImage}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            console.log('Clear button clicked');
+                            clearImage();
+                          }}
                           className="flex items-center space-x-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
                         >
                           <X className="w-4 h-4" />
                           <span>Clear</span>
                         </button>
                         <button
-                          onClick={handleUploadClick}
+                          onClick={(e) => {
+                            e.preventDefault();
+                            console.log('Choose Different button clicked');
+                            handleUploadClick();
+                          }}
                           className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
                         >
                           <Upload className="w-4 h-4" />
@@ -390,7 +406,11 @@ const PestDetectionTool = () => {
 
                   {selectedImage && (
                     <button 
-                      onClick={handleDetection}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        console.log('Detect Pests button clicked');
+                        handleDetection();
+                      }}
                       disabled={isLoading}
                       className="w-full bg-green-600 text-white py-4 rounded-xl hover:bg-green-700 transition-colors disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center space-x-2"
                     >
@@ -424,7 +444,11 @@ const PestDetectionTool = () => {
                       </div>
                       
                       <button 
-                        onClick={startCamera}
+                        onClick={(e) => {
+                          e.preventDefault();
+                          console.log('Start Camera button clicked');
+                          startCamera();
+                        }}
                         className="bg-green-600 text-white px-8 py-4 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 mx-auto"
                       >
                         <Play className="w-5 h-5" />
@@ -446,14 +470,22 @@ const PestDetectionTool = () => {
                         />
                         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
                           <button
-                            onClick={capturePhoto}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              console.log('Capture button clicked');
+                              capturePhoto();
+                            }}
                             className="bg-green-600 text-white px-6 py-3 rounded-full hover:bg-green-700 transition-colors flex items-center space-x-2"
                           >
                             <Camera className="w-5 h-5" />
                             <span>Capture</span>
                           </button>
                           <button
-                            onClick={stopCamera}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              console.log('Stop Camera button clicked');
+                              stopCamera();
+                            }}
                             className="bg-red-600 text-white px-6 py-3 rounded-full hover:bg-red-700 transition-colors flex items-center space-x-2"
                           >
                             <Square className="w-4 h-4" />

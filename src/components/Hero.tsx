@@ -25,10 +25,10 @@ const Hero = () => {
             </div>
 
             <div className="flex flex-col sm:flex-row gap-4">
-              <button className="bg-green-600 text-white px-8 py-4 rounded-lg hover:bg-green-700 transition-all transform hover:scale-105 flex items-center justify-center space-x-2 text-lg font-semibold">
+              <a href="#detection" className="bg-green-600 text-white px-8 py-4 rounded-lg hover:bg-green-700 transition-all transform hover:scale-105 flex items-center justify-center space-x-2 text-lg font-semibold">
                 <span>Start Detection</span>
                 <ArrowRight className="w-5 h-5" />
-              </button>
+              </a>
               
               <button className="border-2 border-gray-300 text-gray-700 px-8 py-4 rounded-lg hover:border-green-600 hover:text-green-600 transition-all flex items-center justify-center space-x-2 text-lg font-semibold">
                 <Shield className="w-5 h-5" />

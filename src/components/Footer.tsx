@@ -60,8 +60,11 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-gray-800 mt-12 pt-8 text-center">
-          <p className="text-gray-400">
-            © 2025 CropGuard. All rights reserved. Protecting crops with cutting-edge AI technology.
+          <p className="text-gray-400 mb-2">
+            © 2025 CropGuard. All rights reserved.
+          </p>
+          <p className="text-gray-500 text-sm">
+            Built with ❤️ by <span className="text-green-400 font-semibold">Shivansh Shekher Ojha</span> | Protecting crops with cutting-edge AI technology
           </p>
         </div>
       </div>

@@ -37,9 +37,9 @@ const Header = () => {
             <a href="#features" className="block px-3 py-2 text-gray-700 hover:text-green-600">Features</a>
             <a href="#detection" className="block px-3 py-2 text-gray-700 hover:text-green-600">Detection Tool</a>
             <a href="#about" className="block px-3 py-2 text-gray-700 hover:text-green-600">About</a>
-            <button className="w-full text-left bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors">
+            <a href="#detection" className="w-full text-left bg-green-600 text-white px-3 py-2 rounded-lg hover:bg-green-700 transition-colors">
               Get Started
-            </button>
+            </a>
           </div>
         </div>
       )}

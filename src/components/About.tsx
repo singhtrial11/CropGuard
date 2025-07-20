@@ -76,9 +76,9 @@ const About = () => {
                 Join thousands of farmers who are already using CropGuard to safeguard their harvests
                 and maximize their yields.
               </p>
-              <button className="bg-white text-green-600 px-6 py-3 rounded-lg hover:bg-gray-100 transition-colors font-semibold">
+              <a href="#detection" className="bg-white text-green-600 px-6 py-3 rounded-lg hover:bg-gray-100 transition-colors font-semibold">
                 Get Started Today
-              </button>
+              </a>
             </div>
           </div>
         </div>
