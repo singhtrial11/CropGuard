@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback } from 'react';
-import { Upload, Camera, Search, AlertTriangle, CheckCircle, Clock, History, BarChart3, Info, Loader, X } from 'lucide-react';
+import { Upload, Camera, Search, AlertTriangle, CheckCircle, Clock, History, BarChart3, Info, Loader, X, Play, Square } from 'lucide-react';
 
 const PestDetectionTool = () => {
   const [selectedImage, setSelectedImage] = useState(null);
@@ -12,6 +12,7 @@ const PestDetectionTool = () => {
   const [stats, setStats] = useState(null);
   const [cameraMode, setCameraMode] = useState(false);
   const [farmerId] = useState('farmer_' + Math.random().toString(36).substr(2, 9));
+  const [stream, setStream] = useState(null);
   
   const fileInputRef = useRef(null);
   const videoRef = useRef(null);
@@ -39,6 +40,7 @@ const PestDetectionTool = () => {
   // Start camera
   const startCamera = async () => {
     try {
+      setError(null);
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
           width: { ideal: 1280 },
@@ -48,8 +50,8 @@ const PestDetectionTool = () => {
       });
       if (videoRef.current) {
         videoRef.current.srcObject = stream;
+        setStream(stream);
         setCameraMode(true);
-        setError(null);
       }
     } catch (err) {
       setError('Camera access denied or not available. Please check permissions.');
@@ -59,9 +61,13 @@ const PestDetectionTool = () => {
 
   // Stop camera
   const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      videoRef.current.srcObject.getTracks().forEach(track => track.stop());
+    if (stream) {
+      stream.getTracks().forEach(track => track.stop());
+      setStream(null);
       setCameraMode(false);
+    }
+    if (videoRef.current) {
+      videoRef.current.srcObject = null;
     }
   };
 
@@ -81,6 +87,7 @@ const PestDetectionTool = () => {
         setSelectedImage(file);
         setImagePreview(canvas.toDataURL());
         stopCamera();
+        setActiveTab('upload'); // Switch back to upload tab to show captured image
       }, 'image/jpeg', 0.8);
     }
   };
@@ -94,6 +101,7 @@ const PestDetectionTool = () => {
 
     setIsLoading(true);
     setError(null);
+    setDetectionResult(null);
 
     const formData = new FormData();
     formData.append('file', selectedImage);
@@ -131,6 +139,7 @@ const PestDetectionTool = () => {
       setHistory(data.history || []);
     } catch (err) {
       console.error('Failed to fetch history:', err);
+      setHistory([]);
     }
   };
 
@@ -142,6 +151,7 @@ const PestDetectionTool = () => {
       setStats(data);
     } catch (err) {
       console.error('Failed to fetch stats:', err);
+      setStats(null);
     }
   };
 
@@ -153,6 +163,15 @@ const PestDetectionTool = () => {
       fetchStats();
     }
   }, [activeTab]);
+
+  // Cleanup camera on unmount
+  React.useEffect(() => {
+    return () => {
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [stream]);
 
   const getSeverityColor = (severity) => {
     switch (severity?.toLowerCase()) {
@@ -168,6 +187,16 @@ const PestDetectionTool = () => {
     if (confidence >= 90) return 'text-green-600';
     if (confidence >= 70) return 'text-yellow-600';
     return 'text-red-600';
+  };
+
+  const clearImage = () => {
+    setSelectedImage(null);
+    setImagePreview(null);
+    setDetectionResult(null);
+    setError(null);
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -241,21 +270,35 @@ const PestDetectionTool = () => {
               {activeTab === 'upload' && (
                 <div className="space-y-6">
                   {/* Upload Area */}
-                  <div 
-                    className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-green-400 transition-colors cursor-pointer"
-                    onClick={() => fileInputRef.current?.click()}
-                  >
-                    <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
-                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                      Upload Crop Image
-                    </h3>
-                    <p className="text-gray-600 mb-6">
-                      Drag and drop an image of your crops, or click to browse files
-                    </p>
-                    <button className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors">
-                      Choose File
-                    </button>
-                  </div>
+                  {!imagePreview ? (
+                    <div 
+                      className="border-2 border-dashed border-gray-300 rounded-2xl p-12 text-center hover:border-green-400 transition-colors cursor-pointer"
+                      onClick={() => fileInputRef.current?.click()}
+                      onDragOver={(e) => e.preventDefault()}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        const files = e.dataTransfer.files;
+                        if (files.length > 0) {
+                          const event = { target: { files } };
+                          handleFileSelect(event);
+                        }
+                      }}
+                    >
+                      <Upload className="w-16 h-16 text-gray-400 mx-auto mb-4" />
+                      <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                        Upload Crop Image
+                      </h3>
+                      <p className="text-gray-600 mb-6">
+                        Drag and drop an image of your crops, or click to browse files
+                      </p>
+                      <button 
+                        type="button"
+                        className="bg-green-600 text-white px-6 py-3 rounded-lg hover:bg-green-700 transition-colors"
+                      >
+                        Choose File
+                      </button>
+                    </div>
+                  ) : null}
 
                   <input
                     ref={fileInputRef}
@@ -268,21 +311,30 @@ const PestDetectionTool = () => {
                   {/* Image Preview */}
                   {imagePreview && (
                     <div className="relative">
+                      <div className="text-center mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">Selected Image</h3>
+                      </div>
                       <img 
                         src={imagePreview} 
                         alt="Selected crop" 
-                        className="max-w-full h-64 object-cover rounded-xl mx-auto border border-gray-200"
+                        className="max-w-full max-h-96 object-contain rounded-xl mx-auto border border-gray-200 shadow-lg"
                       />
-                      <button
-                        onClick={() => {
-                          setSelectedImage(null);
-                          setImagePreview(null);
-                          setDetectionResult(null);
-                        }}
-                        className="absolute top-2 right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                      >
-                        <X className="w-4 h-4" />
-                      </button>
+                      <div className="flex justify-center mt-4 space-x-4">
+                        <button
+                          onClick={clearImage}
+                          className="flex items-center space-x-2 px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-colors"
+                        >
+                          <X className="w-4 h-4" />
+                          <span>Clear</span>
+                        </button>
+                        <button
+                          onClick={() => fileInputRef.current?.click()}
+                          className="flex items-center space-x-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                        >
+                          <Upload className="w-4 h-4" />
+                          <span>Choose Different</span>
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -325,18 +377,22 @@ const PestDetectionTool = () => {
                         onClick={startCamera}
                         className="bg-green-600 text-white px-8 py-4 rounded-xl hover:bg-green-700 transition-colors flex items-center justify-center space-x-2 mx-auto"
                       >
-                        <Camera className="w-5 h-5" />
+                        <Play className="w-5 h-5" />
                         <span>Start Camera</span>
                       </button>
                     </div>
                   ) : (
                     <div className="space-y-4">
+                      <div className="text-center mb-4">
+                        <h3 className="text-lg font-semibold text-gray-900">Camera Active</h3>
+                        <p className="text-sm text-gray-600">Position your crop in the frame and capture</p>
+                      </div>
                       <div className="relative">
                         <video
                           ref={videoRef}
                           autoPlay
                           playsInline
-                          className="w-full max-w-2xl mx-auto rounded-2xl"
+                          className="w-full max-w-2xl mx-auto rounded-2xl shadow-lg"
                         />
                         <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 flex space-x-4">
                           <button
@@ -348,9 +404,10 @@ const PestDetectionTool = () => {
                           </button>
                           <button
                             onClick={stopCamera}
-                            className="bg-red-600 text-white px-6 py-3 rounded-full hover:bg-red-700 transition-colors"
+                            className="bg-red-600 text-white px-6 py-3 rounded-full hover:bg-red-700 transition-colors flex items-center space-x-2"
                           >
-                            <X className="w-5 h-5" />
+                            <Square className="w-4 h-4" />
+                            <span>Stop</span>
                           </button>
                         </div>
                       </div>
@@ -358,33 +415,6 @@ const PestDetectionTool = () => {
                   )}
                   
                   <canvas ref={canvasRef} className="hidden" />
-                  
-                  {imagePreview && !cameraMode && (
-                    <div className="space-y-4">
-                      <img 
-                        src={imagePreview} 
-                        alt="Captured crop" 
-                        className="max-w-full h-64 object-cover rounded-xl mx-auto border border-gray-200"
-                      />
-                      <button 
-                        onClick={handleDetection}
-                        disabled={isLoading}
-                        className="w-full bg-green-600 text-white py-4 rounded-xl hover:bg-green-700 transition-colors disabled:bg-gray-400 flex items-center justify-center space-x-2"
-                      >
-                        {isLoading ? (
-                          <>
-                            <Loader className="w-5 h-5 animate-spin" />
-                            <span>Analyzing...</span>
-                          </>
-                        ) : (
-                          <>
-                            <Search className="w-5 h-5" />
-                            <span>Analyze Capture</span>
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  )}
                 </div>
               )}
 
